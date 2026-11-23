@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+httpx
+pytest
+langgraph
+google-genai  # optional, for Gemini
+reportlab
+pypdf

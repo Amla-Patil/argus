@@ -1,0 +1,113 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Argus</title>
+<style>
+:root{--bg:#0e1116;--card:#171b22;--bd:#2a313c;--tx:#e6e9ee;--mut:#8b95a5;--red:#ff5c5c;--grn:#3fb97a;--amb:#e3a93b;--blu:#4c9aff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif}
+header{display:flex;align-items:center;gap:24px;padding:14px 24px;border-bottom:1px solid var(--bd)}
+header b{font-size:17px}nav button{background:none;border:0;color:var(--mut);padding:8px 12px;cursor:pointer;font:inherit;border-radius:6px}
+nav button.on{background:var(--card);color:var(--tx)}main{padding:24px;max-width:1100px;margin:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:16px}
+.grid .card{margin:0}.num{font-size:28px;font-weight:600}.mut{color:var(--mut)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--bd)}th{color:var(--mut);font-weight:500}
+tr.row{cursor:pointer}tr.row:hover{background:#1d222b}
+.b{padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.CONFIRMED,.CRITICAL,.failed{background:#3a1d1f;color:var(--red)}.PASSED,.done,.INFO{background:#16301f;color:var(--grn)}
+.INCONCLUSIVE,.running,.modified{background:#38300f;color:var(--amb)}.new{background:#12263d;color:var(--blu)}
+input{background:var(--bg);border:1px solid var(--bd);color:var(--tx);padding:9px;border-radius:6px;width:340px;font:inherit}
+button.go{background:var(--blu);color:#06101c;border:0;padding:9px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+pre{background:var(--bg);padding:12px;border-radius:6px;overflow:auto;margin:6px 0}
+.FIXED{background:#16301f;color:var(--grn)}.REGRESSION,.STILL_VULNERABLE{background:#3a1d1f;color:var(--red)}.UNVERIFIED,.CHANGED{background:#38300f;color:var(--amb)}.NEW,.UNCHANGED{background:#12263d;color:var(--blu)}
+button.sec{background:var(--card);color:var(--tx);border:1px solid var(--bd);padding:9px 14px;border-radius:6px;cursor:pointer}button:disabled{opacity:.5;cursor:default}
+.HIGH{background:#3a1d1f;color:var(--red)}.MEDIUM{background:#38300f;color:var(--amb)}.LOW{background:#12263d;color:var(--blu)}.REPORTED{background:#2a1d3a;color:#c58bff}
+.err{color:var(--red);margin-top:8px}
+</style></head><body><div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script>
+const h = React.createElement, {useState, useEffect} = React;
+const badge = (t) => h('span', {className: 'b ' + t}, t);
+const api = (u, o) => fetch(u, o).then(async r => { if (!r.ok) throw new Error((await r.json()).detail || r.statusText); return r.json(); });
+
+function Overview({scans, latest, refresh}) {
+  const [url, setUrl] = useState('http://127.0.0.1:8001'), [err, setErr] = useState('');
+  const f = latest ? latest.findings : [], cnt = s => f.filter(x => x.status === s).length;
+  const lastDone = scans.find(s => s.status === 'done'), [note, setNote] = useState('');
+  const retest = () => api('/api/scans/' + lastDone.id + '/retest', {method: 'POST'}).then(refresh).catch(e => setErr(e.message));
+  const demo = a => api('/api/demo/' + a, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({base_url: url})})
+    .then(r => setNote(r.fixed ? 'Demo target: fix deployed. Now retest.' : 'Demo target: vulnerable again.')).catch(e => setErr(e.message));
+  const running = scans.some(s => s.status === 'running');
+  const start = () => { setErr(''); api('/api/scans', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({base_url: url})}).then(refresh).catch(e => setErr(e.message)); };
+  const stat = (l, n, c) => h('div', {className: 'card'}, h('div', {className: 'mut'}, l), h('div', {className: 'num', style: {color: c}}, n));
+  return h('div', null,
+    h('div', {className: 'grid'}, stat('Endpoints', latest ? latest.endpoints : '–'),
+      stat('Confirmed vulns', cnt('CONFIRMED'), 'var(--red)'), stat('Passed', cnt('PASSED'), 'var(--grn)'),
+      stat('Inconclusive', cnt('INCONCLUSIVE'), 'var(--amb)'), stat('New endpoints', latest ? latest.changes.new.length : '–', 'var(--blu)')),
+    h('div', {className: 'card'}, h('b', null, 'Scan console'),
+      h('div', {style: {display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap'}}, h('input', {value: url, onChange: e => setUrl(e.target.value)}),
+        h('button', {className: 'go', onClick: start, disabled: running}, running ? 'Scanning…' : 'Start scan'),
+        h('button', {className: 'go', onClick: retest, disabled: running || !lastDone}, 'Retest'),
+        h('button', {className: 'sec', onClick: () => demo('fix')}, 'Demo: apply fix'), h('button', {className: 'sec', onClick: () => demo('reset')}, 'Demo: reset')),
+      note && h('div', {className: 'mut', style: {marginTop: 8}}, note),
+      err && h('div', {className: 'err'}, err), h('div', {className: 'mut', style: {marginTop: 8}}, 'Only hosts approved by the scope guard can be scanned.')),
+    latest && latest.comparison && h('div', {className: 'card'}, h('b', null, 'Retest comparison (vs scan ' + latest.previous + ')'), h('table', null,
+      h('thead', null, h('tr', null, ['Check', 'Endpoint', 'Before', 'After', 'Outcome'].map(x => h('th', {key: x}, x)))),
+      h('tbody', null, latest.comparison.map(c => h('tr', {key: c.method + c.endpoint + c.category}, h('td', null, c.category), h('td', null, c.method + ' ' + c.endpoint),
+        h('td', null, badge(c.before)), h('td', null, badge(c.after)), h('td', null, badge(c.outcome))))))),
+    h('div', {className: 'card'}, h('b', null, 'Scan history'), h('table', null,
+      h('thead', null, h('tr', null, ['ID', 'Target', 'Started', 'Status', 'Confirmed', 'Inconclusive'].map(x => h('th', {key: x}, x)))),
+      h('tbody', null, scans.map(s => h('tr', {key: s.id}, h('td', null, s.id), h('td', null, s.base_url), h('td', null, s.started),
+        h('td', null, badge(s.status)), h('td', null, s.confirmed), h('td', null, s.inconclusive)))))));
+}
+
+function Findings({latest}) {
+  const [open, setOpen] = useState(null);
+  if (!latest) return h('div', {className: 'card mut'}, 'Run a scan to see findings.');
+  return h('div', {className: 'card'}, h('table', null,
+    h('thead', null, h('tr', null, ['ID', 'Category', 'Status', 'Severity', 'Endpoint', 'Confidence'].map(x => h('th', {key: x}, x)))),
+    h('tbody', null, latest.findings.flatMap(x => {
+      const rows = [h('tr', {key: x.id, className: 'row', onClick: () => setOpen(open === x.id ? null : x.id)},
+        h('td', null, x.id), h('td', null, x.category), h('td', null, badge(x.status)), h('td', null, badge(x.severity)),
+        h('td', null, x.method + ' ' + x.endpoint), h('td', null, Math.round(x.confidence * 100) + '%'))];
+      if (open === x.id) rows.push(h('tr', {key: x.id + 'd'}, h('td', {colSpan: 6},
+        h('b', null, x.title), h('div', {className: 'mut'}, 'Planner reason: ' + (x.planner_reason || '–')),
+        h('pre', null, JSON.stringify(x.evidence, null, 2)), h('div', null, h('b', null, 'Remediation: '), x.remediation))));
+      return rows; }))));
+}
+
+function Inventory({latest}) {
+  if (!latest) return h('div', {className: 'card mut'}, 'Run a scan to see the API inventory.');
+  const ch = k => latest.changes.new.includes(k) ? 'new' : latest.changes.modified.includes(k) ? 'modified' : null;
+  return h('div', {className: 'card'}, h('table', null,
+    h('thead', null, h('tr', null, ['Method', 'Path', 'Auth', 'Fingerprint', 'Change'].map(x => h('th', {key: x}, x)))),
+    h('tbody', null, latest.inventory.map(e => { const c = ch(e.method + ' ' + e.path);
+      return h('tr', {key: e.method + e.path}, h('td', null, e.method), h('td', null, e.path),
+        h('td', null, e.auth_required ? 'required' : 'none'), h('td', {className: 'mut'}, e.fingerprint), h('td', null, c ? badge(c) : '–')); }))));
+}
+
+function Audit({latest}) {
+  if (!latest) return h('div', {className: 'card mut'}, 'No agent actions yet.');
+  return h('div', {className: 'card'}, latest.audit.map((a, i) => h('pre', {key: i}, JSON.stringify(a, null, 1))));
+}
+
+function Reports({scans}) {
+  const done = scans.filter(s => s.status === 'done');
+  if (!done.length) return h('div', {className: 'card mut'}, 'Finish a scan to generate a report.');
+  return h('div', {className: 'card'}, h('table', null,
+    h('thead', null, h('tr', null, ['Scan', 'Target', 'Started', 'Confirmed', 'Report'].map(x => h('th', {key: x}, x)))),
+    h('tbody', null, done.map(s => h('tr', {key: s.id}, h('td', null, s.id), h('td', null, s.base_url), h('td', null, s.started),
+      h('td', null, s.confirmed), h('td', null, h('a', {href: '/api/scans/' + s.id + '/report.pdf', style: {color: 'var(--blu)'}}, 'Download PDF')))))));
+}
+
+function App() {
+  const [tab, setTab] = useState('Overview'), [scans, setScans] = useState([]), [latest, setLatest] = useState(null);
+  const refresh = () => Promise.all([api('/api/scans'), api('/api/latest')]).then(([s, l]) => { setScans(s); setLatest(l); }).catch(() => {});
+  useEffect(() => { refresh(); const t = setInterval(refresh, 1500); return () => clearInterval(t); }, []);
+  const views = {Overview: h(Overview, {scans, latest, refresh}), Findings: h(Findings, {latest}), Inventory: h(Inventory, {latest}), Reports: h(Reports, {scans}), 'Audit log': h(Audit, {latest})};
+  return h('div', null, h('header', null, h('b', null, '🛡 Argus'),
+    h('nav', null, Object.keys(views).map(t => h('button', {key: t, className: t === tab ? 'on' : '', onClick: () => setTab(t)}, t)))),
+    h('main', null, views[tab]));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script></body></html>
